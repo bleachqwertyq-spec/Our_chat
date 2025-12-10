@@ -1,23 +1,28 @@
+import logging
 import random
-from aiogram import Bot, Dispatcher
-from aiogram.types import Message
-from aiogram.filters import Command
-import asyncio
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes,
+)
 
-# 🔑 Вставьте сюда токен от @BotFather
-BOT_TOKEN = "8570672587:AAEBna0FCYqXsq_CE-zUew-RtiJ-AHkSJJI"
-
-# 💬 Список тёплых, поддерживающих фраз (50 шт)
+# === СПИСОК ФРАЗ ===
 PHRASES = [
     "Ты не обязан сегодня никуда спешить. Мир может немного подождать.",
     "Сегодня ты сделал достаточно — просто потому что встал с постели.",
-    "Не переживай, что не успел. Время не твоё враг — оно просто идёт.",
-    "Если ты устал — это не слабость. Это признак того, что ты живёшь по-настоящему.",
+    "Не переживай, что не успел. Время не твое враг — оно просто идёт.",
+    "Если ты устал — это не слабость.",
     "Тарелки подождут. А ты заслуживаешь чашку чая и пять минут тишины.",
-    "Ничего страшного, что ты не открыл учебники/ноутбук/документы. Иногда мозгу нужно просто «быть».",
-    "Ты не ленивый — ты восстанавливаешься. И это важно.",
-    "Даже если сегодня «ничего не вышло» — ты всё равно ценный человек.",
-    "Ты имеешь право ничего не хотеть. Прямо сейчас.",
+    "Ничего страшного, что ты не открыл учебники или ноутбук.",
+    "Ты не ленивый — ты восстанавливаешься.",
+    "Даже если сегодня ничего не вышло — ты всё равно ценный.",
+    "Ты имеешь право ничего не хотеть.",
+    "Ты не обязан быть продуктивным каждую минуту."
     "Не нужно быть продуктивным каждую минуту. Безделье — тоже часть жизни.",
     "Ты не обязан радовать всех. Иногда достаточно просто быть собой.",
     "Если ты просто лежал — это не потеря времени. Это уход за собой.",
@@ -62,26 +67,79 @@ PHRASES = [
     "Ты не обязан быть благодарным за трудности. Они просто есть — и это не делает их ценными."
 ]
 
-# 🤖 Инициализация бота
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+# === ЛОГИРОВАНИЕ ===
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# ✨ Обработчик команды /живи
-@dp.message(Command("живи"))
-async def send_hug(message: Message):
-    phrase = random.choice(PHRASES)
-    await message.reply(phrase)
 
-# 🔇 Игнорируем всё остальное
-@dp.message()
-async def ignore_all(message: Message):
-    pass  # никакой реакции
+# === /start ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Да", callback_data="yes"),
+            InlineKeyboardButton("Не сегодня", callback_data="no")
+        ]
+    ])
 
-# ▶️ Запуск
-async def main():
-    print("✅ Бот запущен. Жду команду /живи...")
-    await dp.start_polling(bot)
+    await update.message.reply_text(
+        "Привет, хочешь мудрый жизненный совет? 😊",
+        reply_markup=keyboard
+    )
 
-if __name__ == "__main__":
-    asyncio.run(main())
-    executor.start_polling(dp, skip_updates=True)
+
+# === ОБРАБОТКА КНОПОК ===
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "yes":
+        phrase = random.choice(PHRASES)
+        await query.message.reply_text(phrase)
+
+    # если "no" → просто не отвечаем (молчим)
+
+
+# === ОБРАБОТКА СООБЩЕНИЙ В ГРУППЕ ===
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message or not message.text:
+        return
+
+    # работает только в группах
+    if update.message.chat.type not in ("group", "supergroup"):
+        return
+
+    text = message.text
+    bot_username = context.bot.username
+
+    if f"@{bot_username}" in text:
+        phrase = random.choice(PHRASES)
+        await message.reply_text(phrase)
+
+
+# === ЗАПУСК БОТА ===
+def main():
+    TOKEN = os.getenv("BOT_TOKEN")  # токен берём из переменной окружения
+
+    if not TOKEN:
+        raise ValueError("❌ Ошибка: переменная окружения BOT_TOKEN не найдена!")
+
+    app = Application.builder().token(TOKEN).build()
+
+    # командный обработчик
+    app.add_handler(CommandHandler("start", start))
+
+    # кнопки
+    app.add_handler(CallbackQueryHandler(button_callback))
+
+    # текстовые сообщения в группах
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("✅ Бот запущен и готов работать")
+    app.run_polling()
+
+
+if name == "main":
+    main()
